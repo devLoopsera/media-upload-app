@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Media</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            min-height: 100vh;
+        }
+        .container {
+            text-align: center;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 30px;
+        }
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .btn {
+            background: var(--tg-theme-button-color, #0088cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            padding: 15px 20px;
+            border-radius: 12px;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: opacity 0.2s;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .btn-submit {
+            background: #28a745;
+            margin-top: 20px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .loading {
+            background: #e8f4fd;
+            color: #0088cc;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0088cc;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .preview-container {
+            margin: 20px 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+        }
+        .preview-item {
+            position: relative;
+            width: 100%;
+            padding-bottom: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #ddd;
+            background: #f5f5f5;
+        }
+        .preview-item img,
+        .preview-item video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            font-weight: bold;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .remove-btn:active {
+            transform: scale(0.95);
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .media-count {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #999);
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        .file-limit {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999);
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="title">📸 Upload Media</h1>
+        <p class="subtitle" id="subtitle">Capture or upload photos and videos</p>
+        
+        <div class="action-buttons">
+            <button class="btn" onclick="capturePhoto()">
+                <span id="btnTakePhoto">📷 Take Photo</span>
+            </button>
+            <button class="btn" onclick="captureVideo()">
+                <span id="btnRecordVideo">🎥 Record Video</span>
+            </button>
+            <button class="btn btn-secondary" onclick="selectFromGallery()">
+                <span id="btnChooseGallery">🖼️ Choose from Gallery</span>
+            </button>
+        </div>
+
+        <div class="media-count" id="mediaCount"></div>
+        <div class="file-limit" id="fileLimit">Maximum 10 files, 50MB each</div>
+        
+        <div class="preview-container" id="previewContainer"></div>
+        
+        <div id="status"></div>
+        
+        <button class="btn btn-submit" onclick="submitAll()" id="submitBtn" style="display: none;">
+            <span id="btnSubmit">✅ Submit All Files</span>
+        </button>
+
+        <input type="file" id="photoInput" accept="image/*" capture="environment" onchange="handleFileSelect(event)">
+        <input type="file" id="videoInput" accept="video/*" capture="environment" onchange="handleFileSelect(event)">
+        <input type="file" id="galleryInput" accept="image/*,video/*" multiple onchange="handleFileSelect(event)">
+    </div>
+
+    <script>
+        // Initialize Telegram Web App
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // **REPLACE THIS WITH YOUR N8N WEBHOOK URL**
+        const WEBHOOK_URL = 'https://your-n8n-instance.app.n8n.cloud/webhook/cleaner-media';
+        
+        // Get user info from Telegram
+        const telegramUser = tg.initDataUnsafe.user;
+        
+        // Language translations
+        const translations = {
+            en: {
+                title: "📸 Upload Media",
+                subtitle: "Capture or upload photos and videos",
+                btnTakePhoto: "📷 Take Photo",
+                btnRecordVideo: "🎥 Record Video",
+                btnChooseGallery: "🖼️ Choose from Gallery",
+                btnSubmit: "✅ Submit All Files",
+                fileLimit: "Maximum 10 files, 50MB each",
+                filesSelected: "file(s) selected",
+                processingFiles: "Processing files...",
+                filesAdded: "file(s) added successfully!",
+                filesSkipped: "file(s) skipped (size limit or max files reached)",
+                fileRemoved: "File removed",
+                maxFilesReached: "Maximum 10 files allowed",
+                fileTooLarge: "is too large (max 50MB)",
+                uploadingFiles: "Uploading files...",
+                uploadSuccess: "All files uploaded successfully!<br>You can close this window now.",
+                uploadFailed: "Failed to upload files. Please try again.",
+                addFilesFirst: "Please add at least one photo or video"
+            },
+            de: {
+                title: "📸 Medien hochladen",
+                subtitle: "Fotos und Videos aufnehmen oder hochladen",
+                btnTakePhoto: "📷 Foto aufnehmen",
+                btnRecordVideo: "🎥 Video aufnehmen",
+                btnChooseGallery: "🖼️ Aus Galerie wählen",
+                btnSubmit: "✅ Alle Dateien senden",
+                fileLimit: "Maximal 10 Dateien, je 50MB",
+                filesSelected: "Datei(en) ausgewählt",
+                processingFiles: "Dateien werden verarbeitet...",
+                filesAdded: "Datei(en) erfolgreich hinzugefügt!",
+                filesSkipped: "Datei(en) übersprungen (Größenlimit oder maximale Anzahl erreicht)",
+                fileRemoved: "Datei entfernt",
+                maxFilesReached: "Maximal 10 Dateien erlaubt",
+                fileTooLarge: "ist zu groß (max 50MB)",
+                uploadingFiles: "Dateien werden hochgeladen...",
+                uploadSuccess: "Alle Dateien erfolgreich hochgeladen!<br>Sie können dieses Fenster jetzt schließen.",
+                uploadFailed: "Hochladen fehlgeschlagen. Bitte versuchen Sie es erneut.",
+                addFilesFirst: "Bitte fügen Sie mindestens ein Foto oder Video hinzu"
+            },
+            ru: {
+                title: "📸 Загрузить медиа",
+                subtitle: "Сделайте или загрузите фото и видео",
+                btnTakePhoto: "📷 Сделать фото",
+                btnRecordVideo: "🎥 Записать видео",
+                btnChooseGallery: "🖼️ Выбрать из галереи",
+                btnSubmit: "✅ Отправить все файлы",
+                fileLimit: "Максимум 10 файлов, по 50МБ каждый",
+                filesSelected: "файл(ов) выбрано",
+                processingFiles: "Обработка файлов...",
+                filesAdded: "файл(ов) успешно добавлено!",
+                filesSkipped: "файл(ов) пропущено (превышен лимит размера или количества)",
+                fileRemoved: "Файл удален",
+                maxFilesReached: "Максимум 10 файлов разрешено",
+                fileTooLarge: "слишком большой (макс 50МБ)",
+                uploadingFiles: "Загрузка файлов...",
+                uploadSuccess: "Все файлы успешно загружены!<br>Вы можете закрыть это окно.",
+                uploadFailed: "Не удалось загрузить файлы. Попробуйте еще раз.",
+                addFilesFirst: "Пожалуйста, добавьте хотя бы одно фото или видео"
+            },
+            uk: {
+                title: "📸 Завантажити медіа",
+                subtitle: "Зробіть або завантажте фото та відео",
+                btnTakePhoto: "📷 Зробити фото",
+                btnRecordVideo: "🎥 Записати відео",
+                btnChooseGallery: "🖼️ Вибрати з галереї",
+                btnSubmit: "✅ Надіслати всі файли",
+                fileLimit: "Максимум 10 файлів, по 50МБ кожен",
+                filesSelected: "файл(ів) вибрано",
+                processingFiles: "Обробка файлів...",
+                filesAdded: "файл(ів) успішно додано!",
+                filesSkipped: "файл(ів) пропущено (перевищено ліміт розміру або кількості)",
+                fileRemoved: "Файл видалено",
+                maxFilesReached: "Максимум 10 файлів дозволено",
+                fileTooLarge: "занадто великий (макс 50МБ)",
+                uploadingFiles: "Завантаження файлів...",
+                uploadSuccess: "Всі файли успішно завантажено!<br>Ви можете закрити це вікно.",
+                uploadFailed: "Не вдалося завантажити файли. Спробуйте ще раз.",
+                addFilesFirst: "Будь ласка, додайте принаймні одне фото або відео"
+            },
+            ro: {
+                title: "📸 Încarcă media",
+                subtitle: "Capturează sau încarcă fotografii și videoclipuri",
+                btnTakePhoto: "📷 Fă fotografie",
+                btnRecordVideo: "🎥 Înregistrează video",
+                btnChooseGallery: "🖼️ Alege din galerie",
+                btnSubmit: "✅ Trimite toate fișierele",
+                fileLimit: "Maxim 10 fișiere, câte 50MB fiecare",
+                filesSelected: "fișier(e) selectat(e)",
+                processingFiles: "Se procesează fișierele...",
+                filesAdded: "fișier(e) adăugat(e) cu succes!",
+                filesSkipped: "fișier(e) omis(e) (limită de dimensiune sau număr maxim atins)",
+                fileRemoved: "Fișier eliminat",
+                maxFilesReached: "Maxim 10 fișiere permise",
+                fileTooLarge: "este prea mare (max 50MB)",
+                uploadingFiles: "Se încarcă fișierele...",
+                uploadSuccess: "Toate fișierele au fost încărcate cu succes!<br>Puteți închide această fereastră acum.",
+                uploadFailed: "Încărcarea a eșuat. Vă rugăm să încercați din nou.",
+                addFilesFirst: "Vă rugăm să adăugați cel puțin o fotografie sau un videoclip"
+            }
+        };
+
+        // Get language and job_id from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const language = urlParams.get('lang') || 'en';
+        const jobId = urlParams.get('job_id') || null;
+        const t = translations[language] || translations.en;
+
+        // Apply translations on page load
+        function applyTranslations() {
+            document.getElementById('title').textContent = t.title;
+            document.getElementById('subtitle').textContent = t.subtitle;
+            document.getElementById('btnTakePhoto').textContent = t.btnTakePhoto;
+            document.getElementById('btnRecordVideo').textContent = t.btnRecordVideo;
+            document.getElementById('btnChooseGallery').textContent = t.btnChooseGallery;
+            document.getElementById('btnSubmit').textContent = t.btnSubmit;
+            document.getElementById('fileLimit').textContent = t.fileLimit;
+        }
+
+        // Apply translations when page loads
+        applyTranslations();
+        
+        // Store collected data
+        let collectedData = {
+            job_id: jobId,
+            telegram_user_id: telegramUser?.id,
+            telegram_username: telegramUser?.username,
+            telegram_first_name: telegramUser?.first_name,
+            telegram_last_name: telegramUser?.last_name,
+            language: language,
+            timestamp: new Date().toISOString(),
+            media: []
+        };
+
+        const MAX_FILES = 10;
+        const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.innerHTML = message;
+        }
+
+        function updateMediaCount() {
+            const count = collectedData.media.length;
+            const countDiv = document.getElementById('mediaCount');
+            
+            if (count > 0) {
+                countDiv.textContent = `${count} ${t.filesSelected}`;
+                document.getElementById('submitBtn').style.display = 'block';
+            } else {
+                countDiv.textContent = '';
+                document.getElementById('submitBtn').style.display = 'none';
+            }
+        }
+
+        function capturePhoto() {
+            if (collectedData.media.length >= MAX_FILES) {
+                showStatus(t.maxFilesReached, 'error');
+                return;
+            }
+            document.getElementById('photoInput').click();
+        }
+
+        function captureVideo() {
+            if (collectedData.media.length >= MAX_FILES) {
+                showStatus(t.maxFilesReached, 'error');
+                return;
+            }
+            document.getElementById('videoInput').click();
+        }
+
+        function selectFromGallery() {
+            if (collectedData.media.length >= MAX_FILES) {
+                showStatus(t.maxFilesReached, 'error');
+                return;
+            }
+            document.getElementById('galleryInput').click();
+        }
+
+        async function handleFileSelect(event) {
+            const files = event.target.files;
+            if (files.length === 0) return;
+
+            showStatus(`<div class="spinner"></div>${t.processingFiles}`, 'loading');
+
+            let filesAdded = 0;
+            let filesSkipped = 0;
+
+            for (let file of files) {
+                // Check if we've reached max files
+                if (collectedData.media.length >= MAX_FILES) {
+                    filesSkipped++;
+                    continue;
+                }
+
+                // Check file size
+                if (file.size > MAX_FILE_SIZE) {
+                    showStatus(`${file.name} ${t.fileTooLarge}`, 'error');
+                    filesSkipped++;
+                    continue;
+                }
+
+                try {
+                    // Convert to base64
+                    const base64 = await fileToBase64(file);
+                    
+                    collectedData.media.push({
+                        filename: file.name,
+                        type: file.type,
+                        size: file.size,
+                        data: base64,
+                        captured_at: new Date().toISOString()
+                    });
+
+                    // Add preview
+                    addPreview(base64, file.type, collectedData.media.length - 1);
+                    filesAdded++;
+                } catch (error) {
+                    console.error('Error processing file:', error);
+                    filesSkipped++;
+                }
+            }
+
+            updateMediaCount();
+            
+            if (filesAdded > 0) {
+                showStatus(`✅ ${filesAdded} ${t.filesAdded}`, 'success');
+            }
+            if (filesSkipped > 0) {
+                showStatus(`⚠️ ${filesSkipped} ${t.filesSkipped}`, 'error');
+            }
+            
+            // Reset file inputs
+            event.target.value = '';
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function addPreview(base64, type, index) {
+            const container = document.getElementById('previewContainer');
+            const item = document.createElement('div');
+            item.className = 'preview-item';
+            item.dataset.index = index;
+            
+            if (type.startsWith('image/')) {
+                item.innerHTML = `
+                    <img src="${base64}" alt="Preview">
+                    <button class="remove-btn" onclick="removeMedia(${index})">×</button>
+                `;
+            } else if (type.startsWith('video/')) {
+                item.innerHTML = `
+                    <video src="${base64}"></video>
+                    <button class="remove-btn" onclick="removeMedia(${index})">×</button>
+                `;
+            }
+            
+            container.appendChild(item);
+        }
+
+        function removeMedia(index) {
+            collectedData.media.splice(index, 1);
+            
+            // Rebuild preview container
+            const container = document.getElementById('previewContainer');
+            container.innerHTML = '';
+            
+            collectedData.media.forEach((media, i) => {
+                addPreview(media.data, media.type, i);
+            });
+            
+            updateMediaCount();
+            showStatus(t.fileRemoved, 'info');
+        }
+
+        async function submitAll() {
+            if (collectedData.media.length === 0) {
+                showStatus(`❌ ${t.addFilesFirst}`, 'error');
+                return;
+            }
+
+            showStatus(`<div class="spinner"></div>${t.uploadingFiles}`, 'loading');
+            document.getElementById('submitBtn').disabled = true;
+
+            try {
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(collectedData)
+                });
+                
+                if (response.ok) {
+                    showStatus(`✅ ${t.uploadSuccess}`, 'success');
+                    
+                    setTimeout(() => {
+                        tg.close();
+                    }, 2000);
+                } else {
+                    throw new Error('Failed to upload files');
+                }
+            } catch (error) {
+                showStatus(`❌ ${t.uploadFailed}`, 'error');
+                document.getElementById('submitBtn').disabled = false;
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
