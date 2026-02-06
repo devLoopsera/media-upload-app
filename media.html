@@ -486,40 +486,64 @@
             showStatus(t.fileRemoved, 'info');
         }
 
-        async function submitAll() {
-            if (collectedData.media.length === 0) {
-                showStatus(`❌ ${t.addFilesFirst}`, 'error');
-                return;
-            }
+async function submitAll() {
+    const submitBtn = document.querySelector('button[onclick="submitAll()"]');
+    if (submitBtn) submitBtn.disabled = true; // Prevent double-clicks
 
-            showStatus(`<div class="spinner"></div>${t.uploadingFiles}`, 'loading');
-            document.getElementById('submitBtn').disabled = true;
+    const formData = new FormData();
+    
+    // 1. Collect Metadata (Job info and User info)
+    // We append these as individual fields so n8n sees them in the JSON body
+    formData.append('job_id', document.getElementById('jobId')?.value || 'N/A');
+    formData.append('timestamp', new Date().toISOString());
+    
+    if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+        const user = window.Telegram.WebApp.initDataUnsafe.user;
+        formData.append('telegram_user_id', user.id);
+        formData.append('telegram_username', user.username || '');
+        formData.append('telegram_first_name', user.first_name || '');
+    }
 
-            try {
-                const response = await fetch(WEBHOOK_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(collectedData)
-                });
-                
-                if (response.ok) {
-                    showStatus(`✅ ${t.uploadSuccess}`, 'success');
-                    
-                    setTimeout(() => {
-                        tg.close();
-                    }, 2000);
-                } else {
-                    throw new Error('Failed to upload files');
-                }
-            } catch (error) {
-                showStatus(`❌ ${t.uploadFailed}`, 'error');
-                document.getElementById('submitBtn').disabled = false;
-                console.error('Error:', error);
-            }
+    // 2. Attach the actual files (images/videos)
+    // 'allFiles' should be the array where your app stores the captured media objects
+    if (typeof allFiles !== 'undefined' && allFiles.length > 0) {
+        allFiles.forEach((fileObj, index) => {
+            // fileObj.file is the actual Blob or File object from the input/camera
+            formData.append('media', fileObj.file, fileObj.filename);
+        });
+    } else {
+        alert("No media to upload!");
+        if (submitBtn) submitBtn.disabled = false;
+        return;
+    }
+
+    // 3. The Fetch Request
+    try {
+        const response = await fetch('https://n8n.la-renting.com/webhook/get-media', {
+            method: 'POST',
+            body: formData, // Browser automatically sets Content-Type to multipart/form-data
+            mode: 'cors'
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            console.log('Upload Success:', result);
+            alert('Job submitted successfully!');
+            window.Telegram?.WebApp?.close();
+        } else {
+            const errorText = await response.text();
+            console.error('Server Error:', errorText);
+            alert(`Upload failed: ${response.status} - ${response.statusText}`);
         }
+    } catch (error) {
+        console.error('Fetch Error:', error);
+        alert('Network error. Check your internet connection or server CORS settings.');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
     </script>
 </body>
 </html>
+
 
